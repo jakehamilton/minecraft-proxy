@@ -1,5 +1,10 @@
 package main
 
+/*
+ * Copyright 2020 Peter Maguire
+ * petermaguire.xyz
+ */
+
 import (
 	"bytes"
 	"encoding/json"
@@ -11,12 +16,28 @@ import (
 )
 
 func main() {
-	listener, exception := net.Listen("tcp", ":25565")
+	config, exception := readConfig()
+
+	if exception != nil {
+		fmt.Println("Error reading config ", exception)
+		return
+	}
+
+	// Default to all interfaces port 25565
+	if len(config.Listen) == 0 {
+		config.Listen = ":25565"
+	}
+
+	fmt.Println(config.Servers)
+
+	listener, exception := net.Listen("tcp", config.Listen)
 
 	if exception != nil {
 		fmt.Println(exception)
 		return
 	}
+
+	fmt.Println("Listening on ", config.Listen)
 
 	for {
 		connection, exception := listener.Accept()
@@ -32,13 +53,11 @@ func main() {
 	}
 }
 
-func handleHandshaking(in net.Conn) {
+func readConfig() (*Config, error) {
+	jsonFile, exception := os.Open("config.json")
 
-	// Open our jsonFile
-	jsonFile, err := os.Open("config.json")
-	// if we os.Open returns an error then handle it
-	if err != nil {
-		fmt.Println(err)
+	if exception != nil {
+		return nil, exception
 	}
 
 	config := Config{}
@@ -46,34 +65,42 @@ func handleHandshaking(in net.Conn) {
 	jsonBytes, exception := ioutil.ReadAll(jsonFile)
 
 	if exception != nil {
-		fmt.Println("Error reading config", exception)
-		_ = in.Close()
-		return
+		return nil, exception
 	}
 
 	exception = json.Unmarshal(jsonBytes, &config)
 
 	if exception != nil {
-		fmt.Println("Error parsing config", exception)
-		_ = in.Close()
-		return
+		return nil, exception
 	}
 
 	_ = jsonFile.Close()
+
+	return &config, nil
+}
+
+func handleHandshaking(in net.Conn) {
+
+	config, exception := readConfig()
+
+	if exception != nil {
+		fmt.Println("Error reading config ", exception)
+		_ = in.Close()
+		return
+	}
 
 	buf := make([]byte, 8192)
 	for {
 		// Read the incoming connection into the buffer.
 		size, err := in.Read(buf)
 
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println("Error reading in:", err.Error())
-				_ = in.Close()
-				return
-			}
+		if err != nil && err != io.EOF {
+			fmt.Println("Error reading in:", err.Error())
+			_ = in.Close()
+			return
 		}
 
+		// Don't bother sending packets that are 0 length
 		if size == 0 {
 			return
 		}
@@ -106,12 +133,15 @@ func handleHandshaking(in net.Conn) {
 
 		if !ok {
 			fmt.Println("Could not find host for ", serverAddress)
-			_ = in.Close()
-			return
+			// Default host
+			targetHost, ok = config.Servers["default"]
+			if !ok {
+				_ = in.Close()
+				return
+			}
 		}
 
 		fmt.Println("Target host is ", targetHost)
-		// redirectMap[in.RemoteAddr().String()] = targetHost
 
 		out, exception := net.Dial("tcp", targetHost)
 		if exception != nil {
@@ -132,25 +162,24 @@ func handleIncoming(in net.Conn, out net.Conn) {
 	buf := make([]byte, 8192)
 	for {
 		// Read the incoming connection into the buffer.
-		size, err := in.Read(buf)
+		size, exception := in.Read(buf)
 
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println("Error reading in:", err.Error())
-				_ = in.Close()
-				_ = out.Close()
-				return
-			}
+		if exception != nil && exception != io.EOF {
+			fmt.Println("Error reading in:", exception.Error())
+			_ = in.Close()
+			_ = out.Close()
+			return
 		}
 
+		// Don't bother sending packets that are 0 length
 		if size == 0 {
 			return
 		}
 
-		_, err = out.Write(buf[:size])
+		_, exception = out.Write(buf[:size])
 
-		if err != nil && err != io.EOF {
-			fmt.Println("Error writing out:", err.Error())
+		if exception != nil && exception != io.EOF {
+			fmt.Println("Error writing out:", exception.Error())
 			_ = in.Close()
 			_ = out.Close()
 		}
@@ -161,25 +190,24 @@ func handleOutgoing(in net.Conn, out net.Conn) {
 	buf := make([]byte, 8192)
 	for {
 		// Read the incoming connection into the buffer.
-		size, err := out.Read(buf)
+		size, exception := out.Read(buf)
 
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println("Error reading out:", err.Error())
-				_ = in.Close()
-				_ = out.Close()
-				return
-			}
+		if exception != nil && exception != io.EOF {
+			fmt.Println("Error reading out:", exception.Error())
+			_ = in.Close()
+			_ = out.Close()
+			return
 		}
 
+		// Don't bother sending packets that are 0 length
 		if size == 0 {
 			return
 		}
 
-		_, err = in.Write(buf[:size])
+		_, exception = in.Write(buf[:size])
 
-		if err != nil && err != io.EOF {
-			fmt.Println("Error writing in:", err.Error())
+		if exception != nil && exception != io.EOF {
+			fmt.Println("Error writing in:", exception.Error())
 			_ = in.Close()
 			_ = out.Close()
 		}
@@ -216,5 +244,4 @@ func ReadString(buf []byte) (interface{}, int) {
 	output := string(bytes.Runes(buf[stringStart:]))[:stringLength.(int)]
 
 	return output, stringStart + len([]byte(output))
-
 }
