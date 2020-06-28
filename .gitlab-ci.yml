@@ -1,0 +1,13 @@
+stages:
+  - build
+
+build:
+  stage: build
+  image: golang:1.14-alpine
+  only:
+    - master
+  artifacts:
+    paths:
+      - minecraft-proxy
+  script:
+    - go build -o minecraft-proxy
