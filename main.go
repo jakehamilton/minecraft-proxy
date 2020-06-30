@@ -23,6 +23,13 @@ func main() {
 		return
 	}
 
+	fmt.Println(os.Args)
+
+	if len(os.Args) > 1 {
+		editConfig(config)
+		return
+	}
+
 	// Default to all interfaces port 25565
 	if len(config.Listen) == 0 {
 		config.Listen = ":25565"
@@ -50,6 +57,44 @@ func main() {
 		} else {
 			go handleHandshaking(connection)
 		}
+	}
+}
+
+func editConfig(config *Config) {
+	if os.Args[1] == "add-server" {
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: minecraft-proxy add-server hostname target:25565")
+			return
+		}
+		host := os.Args[2]
+		target := os.Args[3]
+
+		config.Servers[host] = target
+
+	} else if os.Args[1] == "del-server" {
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: minecraft-proxy del-server hostname")
+			return
+		}
+		host := os.Args[2]
+		delete(config.Servers, host)
+	} else {
+		fmt.Println("Usage: minecraft-proxy del-server or add-server")
+		return
+	}
+
+	jsonOut, exception := json.MarshalIndent(&config, "", "\t")
+
+	if exception != nil {
+		fmt.Println("Error formatting JSON: ", exception)
+		return
+	}
+
+	exception = ioutil.WriteFile("config.json", jsonOut, 0644)
+
+	if exception != nil {
+		fmt.Println("Error writing JSON: ", exception)
+		return
 	}
 }
 

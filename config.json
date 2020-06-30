@@ -1,7 +1,8 @@
 {
-  "listen": ":25565",
-  "servers": {
-    "localhost": "uxvirminecraft0003.lan:25567",
-    "default": "uxvirminecraft0001.lan:25566"
-  }
+	"listen": ":25565",
+	"servers": {
+		"default": "uxvirminecraft0001.lan:25566",
+		"localhost": "uxvirminecraft0003.lan:25567",
+		"test": "test123:456"
+	}
 }
